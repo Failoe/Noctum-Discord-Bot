@@ -7,7 +7,6 @@ import discord
 import asyncio
 from discord.ext import commands
 import re
-import logging
 import datetime
 
 from mcstatus import MinecraftServer
@@ -17,8 +16,6 @@ import requests
 __version__ = 0.3
 
 os.system("title " + "Noctum Bot{}".format(__version__))
-
-# logging.basicConfig(level=logging.INFO)
 
 description = "Noctum bot for OP Ark's Discord"
 
