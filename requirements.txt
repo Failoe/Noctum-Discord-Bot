@@ -1,0 +1,3 @@
+python-valve
+discord
+mcstatus
