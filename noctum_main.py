@@ -13,7 +13,7 @@ from mcstatus import MinecraftServer
 from bs4 import BeautifulSoup
 import requests
 
-__version__ = 0.3
+__version__ = 0.4
 
 os.system("title " + "Noctum Bot{}".format(__version__))
 
