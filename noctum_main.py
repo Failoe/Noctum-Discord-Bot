@@ -23,6 +23,7 @@ os.system("title " + "Noctum Bot v{}".format(__version__))
 logging.basicConfig(level=logging.INFO)
 description = "Noctum bot for OP Ark's Discord"
 
+announced_dinos = []
 
 def pgsql_connect():
     conn = psycopg2.connect(
@@ -58,13 +59,47 @@ def dino_alert(creature, level):
 def ark_add_alert(user, dino, level):
     conn = pgsql_connect()
     cur = conn.cursor()
-    cur.execute(cur.mogrify(""" INSERT INTO ark_alerts (user, dino, level)
+    cur.execute(cur.mogrify(""" INSERT INTO ark_alerts (user_id, dino, level)
                     VALUES (%s, %s, %s)
-                    ON CONFLICT (dino) UPDATE SET level = %s AND user = %s""",
+                    ON CONFLICT (dino) DO UPDATE 
+                    SET level = %s, user_id = %s""",
                     (user, dino, level, level, user)))
     conn.commit()
     cur.close()
     conn.close()
+
+
+def ark_alert_query(channel, client):
+    output = []
+    conn = pgsql_connect()
+    cur = conn.cursor()
+    cur.execute("SELECT dino, level FROM ark_alerts")
+    alerts = cur.fetchall()
+    # print(alerts)
+    for alert in alerts:
+        creature, level = alert
+        cur = conn.cursor()
+
+        cur.execute(""" SELECT baselevel, lat, lon, gender, wild_health, wild_stamina, wild_melee, id
+                        FROM creatures
+                        WHERE type='{0}'
+                        AND tamed IS NULL
+                        AND baselevel >= {1}""".format(creature, level))
+
+        rows = cur.fetchall()
+        if len(rows) > 0:
+            for dino in rows:
+                if dino[7] not in announced_dinos:
+                    dino_message = "Level {0} {3} {7} spotted. {1}, {2}\n{4} HP | {5} Stam | {6} Melee".format(
+                        dino[0], round(dino[1], 1), round(dino[2], 1), dino[3], dino[4], dino[5], dino[6], creature)
+                    # baselevel, lat, lon, gender, wild_health, wild_stamina, wild_melee
+                    # await client.send_message(channel, dino_message)
+                    output.append(dino_message)
+                    announced_dinos.append(dino[7])
+
+    cur.close()
+    conn.close()
+    return output
 
 
 def mtg_card_link(cardname):
@@ -125,7 +160,6 @@ async def on_ready():
     # This code updates the CTA header to show the player counts
     await client.wait_until_ready()
     await asyncio.sleep(3)
-    announced_dinos = []
     while not client.is_closed:
         channel = client.get_channel('391298871768121344')
         try:
@@ -135,26 +169,8 @@ async def on_ready():
             steamresult = "I can't find the server. ¯\_(ツ)_/¯"
         await client.edit_channel(channel, topic=steamresult)
 
-        dinos = dino_alert('Yutyrannus', 100)
-        if len(dinos) > 0:
-            for dino in dinos:
-                if dino[7] not in announced_dinos:
-                    dino_message = "Level {0} {3} Yutyrannus spotted. {1}, {2}\n{4} HP | {5} Stam | {6} Melee".format(
-                        dino[0], round(dino[1], 1), round(dino[2], 1), dino[3], dino[4], dino[5], dino[6])
-                    # baselevel, lat, lon, gender, wild_health, wild_stamina, wild_melee
-                    await client.send_message(channel, dino_message)
-                    announced_dinos.append(dino[7])
-
-        dinos = dino_alert('Mosasaurus', 100)
-        if len(dinos) > 0:
-            for dino in dinos:
-                if dino[7] not in announced_dinos:
-                    dino_message = "Level {0} {3} Yutyrannus spotted. {1}, {2}\n{4} HP | {5} Stam | {6} Melee".format(
-                        dino[0], round(dino[1], 1), round(dino[2], 1), dino[3], dino[4], dino[5], dino[6])
-                    # baselevel, lat, lon, gender, wild_health, wild_stamina, wild_melee
-                    await client.send_message(channel, dino_message)
-                    announced_dinos.append(dino[7])
-
+        for dino_alert in ark_alert_query(channel, client):
+            await client.send_message(channel, dino_alert)
         await asyncio.sleep(300)
 
 
@@ -244,8 +260,8 @@ async def add_alert(member, message):
             fuzzy_dino = dino_name
         else:
             fuzzy_dino = process.extractOne(dino_name, dino_list)[0]
-        ark_add_alert(member.id, fuzzy_dino, int(dino_level))
-        await client.send_message(member.message.channel, "Added alert level {}+ {}".format(dino_level, fuzzy_dino))
+        ark_add_alert(member.message.author.id, fuzzy_dino, int(dino_level))
+        await client.send_message(member.message.channel, "Added alert for level {}+ {}".format(dino_level, fuzzy_dino))
     except ValueError:
         await client.send_message(member.message.channel, "You did something wrong.")
 
