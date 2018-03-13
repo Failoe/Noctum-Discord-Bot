@@ -55,6 +55,18 @@ def dino_alert(creature, level):
     return rows
 
 
+def ark_add_alert(user, dino, level):
+    conn = pgsql_connect()
+    cur = conn.cursor()
+    cur.execute(cur.mogrify(""" INSERT INTO ark_alerts (user, dino, level)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (dino) UPDATE SET level = %s AND user = %s""",
+                    (user, dino, level, level, user)))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
 def mtg_card_link(cardname):
     page = requests.get("http://magiccards.info/query?q={}".format(cardname))
     soup = BeautifulSoup(page.content, 'html5lib')
@@ -220,6 +232,23 @@ async def query(member, message):
             await client.send_message(member.message.channel, "```\n{}\n{}```".format(fuzzy_dino, '\n'.join(output_list)))
         else:
             await client.send_message(member.message.channel, "No results.")
+
+
+@client.command(pass_context=True)
+async def add_alert(member, message):
+    dino_list = [x['name'] for x in json.loads(open('../omni2/creatures/classes.json').readline())]
+    command_text = member.message.content[11:]
+    try:
+        dino_name, dino_level = command_text.split(' ')
+        if dino_name in dino_list:
+            fuzzy_dino = dino_name
+        else:
+            fuzzy_dino = process.extractOne(dino_name, dino_list)[0]
+        ark_add_alert(member.id, fuzzy_dino, int(dino_level))
+        await client.send_message(member.message.channel, "Added alert level {}+ {}".format(dino_level, fuzzy_dino))
+    except ValueError:
+        await client.send_message(member.message.channel, "You did something wrong.")
+
 
 @client.command(pass_context=True)
 async def item(member):
