@@ -169,9 +169,9 @@ async def on_ready():
             steamresult = "I can't find the server. ¯\_(ツ)_/¯"
         await client.edit_channel(channel, topic=steamresult)
 
-        for dino_alert in ark_alert_query(channel, client):
-            await client.send_message(channel, dino_alert)
-        await asyncio.sleep(300)
+        # for dino_alert in ark_alert_query(channel, client):
+        #     await client.send_message(channel, dino_alert)
+        # await asyncio.sleep(300)
 
 
 @client.event
@@ -251,7 +251,22 @@ async def query(member, message):
 
 
 @client.command(pass_context=True)
+async def list_alerts(member):
+    """ Lists the currently active Ark dino alerts """
+    conn = pgsql_connect()
+    cur = conn.cursor()
+    cur.execute("""SELECT dino, level FROM ark_alerts""")
+    alerts = cur.fetchall()
+    cur.close()
+    conn.close()
+    print(alerts)
+    output = '\n'.join(['{} {}'.format(' '*(3-len(str(level)))+str(level), dino) for dino, level in alerts])
+    await client.send_message(member.message.channel, '```\n' + output + '```') 
+
+
+@client.command(pass_context=True)
 async def add_alert(member, message):
+    """ Adds a alert for a dinos that spawn above a given level.  Format is: !add_alert Rex 100 """
     dino_list = [x['name'] for x in json.loads(open('../omni2/creatures/classes.json').readline())]
     command_text = member.message.content[11:]
     try:
@@ -262,6 +277,30 @@ async def add_alert(member, message):
             fuzzy_dino = process.extractOne(dino_name, dino_list)[0]
         ark_add_alert(member.message.author.id, fuzzy_dino, int(dino_level))
         await client.send_message(member.message.channel, "Added alert for level {}+ {}".format(dino_level, fuzzy_dino))
+    except ValueError:
+        await client.send_message(member.message.channel, "You did something wrong.")
+
+
+@client.command(pass_context=True)
+async def remove_alert(member, message):
+    """ Removes alerts for a dino type.  Format is: !remove_alert Rex """
+    dino_list = [x['name'] for x in json.loads(open('../omni2/creatures/classes.json').readline())]
+    dino_name = member.message.content[14:]
+    try:
+        if dino_name in dino_list:
+            fuzzy_dino = dino_name
+        else:
+            fuzzy_dino = process.extractOne(dino_name, dino_list)[0]
+
+        conn = pgsql_connect()
+        cur = conn.cursor()
+        cur.execute(cur.mogrify("""DELETE FROM ark_alerts
+                                    WHERE dino = '%s';""" % fuzzy_dino))
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        await client.send_message(member.message.channel, "Deleted alert for {}".format(fuzzy_dino))
     except ValueError:
         await client.send_message(member.message.channel, "You did something wrong.")
 
@@ -289,29 +328,6 @@ async def lastupdate(member):
     await client.send_message(member.message.channel, "Last database update: {}".format(cur.fetchall()[0][0]))
     conn.close()
 
-
-@client.command(pass_context=True)
-async def mrfrimblywimble(member):
-    conn = pgsql_connect()
-    cur = conn.cursor()
-    cur.execute("""SELECT baselevel, lat, lon, gender, wild_health, wild_stamina, wild_melee, type
-            FROM creatures
-            WHERE tamed IS NULL
-            ORDER BY RANDOM()
-            LIMIT 1""")
-
-    rows = cur.fetchone()
-    conn.close()
-    dino_message = "{7} {0}{3}{1}, {2}[{4} HP | {5} Stam | {6} Melee]".format(
-            str(rows[0])+" "*(4-len(str(rows[0]))),
-            " "*(5-len(str(round(rows[1], 1))))+str(round(rows[1], 1)),
-            str(round(rows[2], 1))+" "*(5-len(str(round(rows[2], 1)))),
-            rows[3]+" "*(7-len(rows[3])),
-            " "*(2-len(str(0 if rows[4] == None else rows[4])))+str(0 if rows[4] == None else rows[4]),
-            " "*(2-len(str(0 if rows[5] == None else rows[5])))+str(0 if rows[5] == None else rows[5]),
-            " "*(2-len(str(0 if rows[6] == None else rows[6])))+str(0 if rows[6] == None else rows[6]),
-            rows[7])
-    await client.send_message(member.message.channel, "```\n{}```".format(dino_message))
 
 @client.command()
 async def joined(member: discord.Member):
