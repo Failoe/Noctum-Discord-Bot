@@ -2,9 +2,7 @@ import psycopg2
 import configparser
 
 
-def pgsql_connect(config_path):
-	config = configparser.ConfigParser()
-	config.read(config_path)
+def pgsql_connect(config):
 	conn = psycopg2.connect(
 		database=config['PostgreSQL']['database'],
 		user=config['PostgreSQL']['user'],
@@ -37,9 +35,16 @@ def initialize_db(conn):
 	init_cur.close()
 
 
+def create_table(conn, table_name, *columns):
+	init_cur = conn.cursor()
+	init_cur.execute("""CREATE TABLE {} ({});""".format(table_name, ','.join(columns)))
+	conn.commit()
+	init_cur.close()
+
+
 def main():
 	conn = pgsql_connect('../noctum.config')
-	initialize_db(conn)
+	# initialize_db(conn)
 	conn.close()
 
 if __name__ == '__main__':
