@@ -19,10 +19,12 @@ import json
 import logging
 import configparser
 from noctum_utils.db_utils import pgsql_connect
+import sqlite3
+from tabulate import tabulate
 
 __version__ = 0.3
 os.system("title " + "Noctum Bot v{}".format(__version__))
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.ERROR)
 description = "Noctum bot for OP Ark's Discord"
 
 config = configparser.ConfigParser()
@@ -99,6 +101,19 @@ def ark_alert_query(channel, client):
     return output
 
 
+def armory_query(charname):
+    page = requests.get('http://armory.twinstar.cz/character-sheet.xml?r=Kronos&cn={}'.format(charname))
+    soup = BeautifulSoup(page.content, "html5lib")
+
+    char_level = soup.find("character")['level']
+    char_race = soup.find("character")['race']
+    lastmodified = soup.find("character")['lastmodified']
+    professions = soup.professions.find_all('skill')
+    profession1 = (professions[0]['key'], professions[0]['value'])
+    profession2 = (professions[1]['key'], professions[1]['value'])
+
+    return (char_level, char_race, lastmodified, professions, profession1, profession2)
+
 def steamplayers(address="objectivelyperfect.com", port=27015):
     """Returns a string with the list of players for a given server."""
     SERVER_ADDRESS = (address, port)
@@ -142,11 +157,15 @@ client = commands.Bot(command_prefix=['!'], description=description)
 async def on_ready():
     print('Logged in as: {}. ID: {}'.format(client.user.name, client.user.id))
     print('------')
-    await client.change_presence(game=discord.Game(name='with things she can\'t control'))
+    # Sets the Noctum's status to playing the following game
+    # game = discord.Game(name='with data')
+    # await client.change_presence(status=discord.Status.online, game=game)
 
     # This code updates the CTA header to show the player counts
     await client.wait_until_ready()
     await asyncio.sleep(3)
+
+    # This updates the Conquer the Ark channel with the currently online players
     while not client.is_closed:
         channel = client.get_channel('391298871768121344')
         try:
@@ -156,38 +175,18 @@ async def on_ready():
             steamresult = "I can't find the server. ¯\_(ツ)_/¯"
         await client.edit_channel(channel, topic=steamresult)
 
-        # for dino_alert in ark_alert_query(channel, client):
-        #     await client.send_message(channel, dino_alert)
-        # await asyncio.sleep(300)
-
 
 @client.event
 async def on_message(message):
     print(datetime.datetime.now().time(), message.channel,
           message.author.name, "|", message.content)
-    if message.author.id != "260964776945909760":  # Excludes Noctum's own messages
+    if message.author.id != 260964776945909760:  # Excludes Noctum's own messages
         if message.content.startswith('Noctum help') or message.content == ("help"):
-            await client.send_message(message.channel, "Hah, no.")
-        # elif message.content.startswith('#') and message.author.id == "119717143670423554":
-        #     await client.delete_message(message)
-        #     await client.send_message(message.channel, message.content[1:])
-        elif message.content.startswith('$$') and message.author.id == "119717143670423554":
-            output_channel = "bot"
-            regex = re.compile(r"\$(.+?) (.*)")
-            output_channel = regex.match(message.content).group(1)
-            print(output_channel)
-            output_text = regex.match(message.content).group(2)
-            try:
-                for server in client.servers:
-                    for channel in server.channels:
-                        if channel.name == output_channel:
-                            output_channel = channel
-                await client.send_message(client.get_channel(output_channel[2:-1]), output_text)
-            except:
-                await client.send_message(message.channel, "Not a real channel nerd.")
-        elif message.content.lower().startswith('noctum') and "promise to be good" in message.content:
-            await client.send_message(message.channel, "You may enter.")
-            await client.send_message(message.author, "The password is `conquer`.")
+            await message.channel.send("Hah, no.")
+
+        if 'thunderfury' in message.content.lower():
+            await message.channel.send("Did someone say [Thunderfury, Blessed Blade of the Windseeker]?")
+
     await client.process_commands(message)
 
 
@@ -195,7 +194,22 @@ async def on_message(message):
 async def on_member_join(member):
     server = member.server
     fmt = 'Welcome {0.mention} to {1}!'
-    await client.send_message(server, fmt.format(member, "OP Ark"))
+    await server.send(fmt.format(member, "OP Ark"))
+
+
+@client.command(pass_context=True)
+async def run_sql(ctx, arg1, *arg2):
+    if ctx.message.author.id == 119717143670423554:
+        if arg1 == "pgsql":
+            pass
+        elif arg1 == "sqlite":
+            conn = sqlite3.connect(config['sqlite']['path'])
+            cur = conn.cursor()
+            cur.execute(" ".join(arg2))
+            conn.commit()
+            cur.close()
+            conn.close()
+
 
 @client.command(pass_context=True)
 async def query(member, message):
@@ -203,7 +217,7 @@ async def query(member, message):
 
     # This if statement can be removed. ;D
     if member.message.content[7:].lower() == 'failoe':
-        await client.send_message(member.message.channel, 'HE IS EVERYWHERE! FLEE FOR YOUR LIVES!')
+        await member.message.channel.send('HE IS EVERYWHERE! FLEE FOR YOUR LIVES!')
         return
 
     if member.message.content[7:] in dino_list:
@@ -236,9 +250,9 @@ async def query(member, message):
                     " "*(2-len(str(0 if dino[5] == None else dino[5])))+str(0 if dino[5] == None else dino[5]),
                     " "*(2-len(str(0 if dino[6] == None else dino[6])))+str(0 if dino[6] == None else dino[6]))
             output_list.append(dino_message)
-        await client.send_message(member.message.channel, "```\n{}\n{}```".format(fuzzy_dino, '\n'.join(output_list)))
+        await member.message.channel.send("```\n{}\n{}```".format(fuzzy_dino, '\n'.join(output_list)))
     else:
-        await client.send_message(member.message.channel, "No results.")
+        await member.message.channel.send("No results.")
 
 
 @client.command(pass_context=True)
@@ -252,7 +266,78 @@ async def list_alerts(member):
     conn.close()
     print(alerts)
     output = '\n'.join(['{} {}'.format(' '*(3-len(str(level)))+str(level), dino) for dino, level in alerts])
-    await client.send_message(member.message.channel, '```\n' + output + '```') 
+    await member.message.channel.send('```\n' + output + '```') 
+
+
+@client.command(pass_context=True)
+async def wow(ctx, func, char_name='', _class='', *race):
+    """ Updates WoW Classic Discord Profiles
+    !wow add Name Class Race
+    !wow remove Name
+    !wow roster (To see a list of players)
+    """
+    classes = ['warrior', 'rogue', 'paladin', 'mage', 'priest', 'hunter', 'druid', 'warlock']
+    races = ['human', 'dwarf', 'gnome', 'night elf']
+
+    race = " ".join(race).lower()
+
+    if func == 'add':
+        if not char_name.isalpha():
+            await ctx.message.channel.send('Invalid character name. Format `!wow add Name Class Race`')
+            return
+        if _class.lower() not in classes:
+            await ctx.message.channel.send('Invalid class. Format `!wow add Name Class Race`')
+            return
+        if race not in races:
+            await ctx.message.channel.send('Invalid race. Format `!wow add Name Class Race`')
+            return
+
+        conn = sqlite3.connect(config['sqlite']['path'])
+        cur = conn.cursor()
+        cur.execute("""
+                    INSERT OR REPLACE INTO wow_chars (discord_id, char_name, char_class, race)
+                    VALUES ({}, '{}', '{}', '{}');
+                    """.format(ctx.message.author.id, char_name.lower(), _class.lower(), race)
+                    )
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        await ctx.message.channel.send('Added {} to database: {}, {}'.format(char_name, race, _class).title())
+
+    elif func == 'remove':
+        if not char_name.isalpha():
+            await ctx.message.channel.send('Invalid character name. Format: `!wow remove Name`')
+            return
+        char_name = char_name.lower()
+
+        conn = sqlite3.connect(config['sqlite']['path'])
+        cur = conn.cursor()
+        owner_id = cur.execute("SELECT discord_id FROM wow_chars WHERE char_name = '{}';".format(char_name)).fetchone()
+        if owner_id is not None:
+            owner_id = owner_id[0]
+            print(owner_id)
+            if owner_id == ctx.message.author.id:
+                cur.execute("DELETE FROM wow_chars WHERE char_name = '{}' and discord_id = {};".format(char_name, ctx.message.author.id))
+                conn.commit()
+                await ctx.message.channel.send('Deleted {}.'.format(char_name.title()))    
+        else:
+            await ctx.message.channel.send('You can\'t remove other people\'s characters.')
+        conn.close()
+
+    elif func == 'roster':
+        conn = sqlite3.connect(config['sqlite']['path'])
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM wow_chars")
+        rows = cur.fetchall()
+        rows = [list(row) for row in rows]
+        for row in rows:
+            row[0] = client.get_user(row[0]).display_name
+        
+        rows.sort(key=lambda x: x[2])
+        output = tabulate(rows, headers=['User', 'Name', 'Class', 'Race', 'Lvl'])
+        conn.close()
+        await ctx.message.channel.send('```{}```'.format(output).title())
 
 
 @client.command(pass_context=True)
@@ -267,9 +352,9 @@ async def add_alert(member, message):
         else:
             fuzzy_dino = process.extractOne(dino_name, dino_list)[0]
         ark_add_alert(member.message.author.id, fuzzy_dino, int(dino_level))
-        await client.send_message(member.message.channel, "Added alert for level {}+ {}".format(dino_level, fuzzy_dino))
+        await member.message.channel.send("Added alert for level {}+ {}".format(dino_level, fuzzy_dino))
     except ValueError:
-        await client.send_message(member.message.channel, "You did something wrong.")
+        await member.message.channel.send("You did something wrong.")
 
 
 @client.command(pass_context=True)
@@ -291,9 +376,9 @@ async def remove_alert(member, message):
         cur.close()
         conn.close()
 
-        await client.send_message(member.message.channel, "Deleted alert for {}".format(fuzzy_dino))
+        await member.message.channel.send("Deleted alert for {}".format(fuzzy_dino))
     except ValueError:
-        await client.send_message(member.message.channel, "You did something wrong.")
+        await member.message.channel.send("You did something wrong.")
 
 
 @client.command(pass_context=True)
@@ -308,7 +393,7 @@ async def item(member):
             message_list.append("{}: {}".format(item_name.title(), sql_results))
         else:
             message_list.append("Ain't got no {}.".format(item_name))
-    await client.send_message(member.message.channel, "\n".join(message_list))
+    await member.message.channel.send("\n".join(message_list))
 
 
 @client.command(pass_context=True)
@@ -316,7 +401,7 @@ async def lastupdate(member):
     conn = pgsql_connect(config)
     cur = conn.cursor()
     cur.execute('SELECT datestamp FROM players LIMIT 1')
-    await client.send_message(member.message.channel, "Last database update: {}".format(cur.fetchall()[0][0]))
+    await member.message.channel.send("Last database update: {}".format(cur.fetchall()[0][0]))
     conn.close()
 
 
@@ -343,7 +428,10 @@ async def online(ctx):
     """Shows online players. Usage: !online island|scorched"""
     if ctx.invoked_subcommand is None:
         steamresult = steamplayers("objectivelyperfect.com", 27015)
-        await client.send_message(ctx.message.channel, steamresult[0])
+        await ctx.message.channel.send(steamresult[0])
 
-
-client.run(config['auth']['discord_token'])
+while True:
+    try:
+        client.run(config['auth']['discord_token'])
+    except ConnectionResetError as e:
+        print(e)
