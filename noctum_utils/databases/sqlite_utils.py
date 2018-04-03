@@ -13,17 +13,23 @@ def create_table(cur, table_name, columns):
 	"""
 	try:
 		cur.execute("CREATE TABLE {} ({});".format(table_name, ','.join(columns)))
+		conn.commit()
 	except sqlite3.OperationalError as e:
 		print("SQLite Error: {}".format(e))
 
 
 # conn = database_connect('../../noctumDB')
 # cur = conn.cursor()
-# create_table(cur, 'wow_chars', ['discord_id INTEGER NOT NULL',
-# 								'char_name text NOT NULL',
-# 								'char_class text',
+# cur.execute('drop table wow_char_info;')
+# create_table(cur, 'wow_char_info', ['name text NOT NULL',
+# 								'class text',
 # 								'race text',
 # 								'level int',
-# 								'UNIQUE (discord_id, char_name) ON CONFLICT REPLACE',
-# 								'PRIMARY KEY (discord_id, char_name)'])
+# 								'lastmodified text',
+# 								'prof1 string',
+# 								'prof1_level int',
+# 								'prof2 string',
+# 								'prof2_level int',
+# 								'UNIQUE (name) ON CONFLICT REPLACE',
+# 								'PRIMARY KEY (name)'])
 # conn.close()

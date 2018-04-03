@@ -101,18 +101,54 @@ def ark_alert_query(channel, client):
     return output
 
 
-def armory_query(charname):
-    page = requests.get('http://armory.twinstar.cz/character-sheet.xml?r=Kronos&cn={}'.format(charname))
+def armory_guild_update(context):
+    page = requests.get('http://armory.twinstar.cz/guild-info.xml?r=Kronos+III&gn=Objectively+Perfect')
     soup = BeautifulSoup(page.content, "html5lib")
 
-    char_level = soup.find("character")['level']
-    char_race = soup.find("character")['race']
-    lastmodified = soup.find("character")['lastmodified']
-    professions = soup.professions.find_all('skill')
-    profession1 = (professions[0]['key'], professions[0]['value'])
-    profession2 = (professions[1]['key'], professions[1]['value'])
+    characters = soup.find_all('character')
+    character_list = [character['name'].lower() for character in characters]
+    conn = sqlite3.connect(config['sqlite']['path'])
+    cur = conn.cursor()
 
-    return (char_level, char_race, lastmodified, professions, profession1, profession2)
+    db_char_list = [x[0] for x in cur.execute("SELECT name FROM wow_char_info;").fetchall()]
+
+    for char in db_char_list:
+        if char not in character_list:
+            print("Deleting {}".format(char))
+            cur.execute("DELETE FROM wow_char_info WHERE name=?", (char,))
+            cur.execute("DELETE FROM wow_chars WHERE name=?", (char,))
+            conn.commit()
+    for character in character_list:
+        char_info = armory_char_query(character)
+        cur.execute("""
+                    INSERT OR REPLACE INTO wow_char_info (name, level, race, class, lastmodified, prof1, prof1_level, prof2, prof2_level)
+                    VALUES ('{0}', {level}, '{race}', '{class}', '{lastmodified}', '{profession1[0]}', {profession1[1]}, '{profession2[0]}', '{profession2[1]}');
+                    """.format(character, **char_info)
+                    )
+        conn.commit()
+    cur.close()
+    conn.close()
+
+
+def armory_char_query(charname):
+
+    # reason 2 = doesn't exist
+    # reason 6 = too low level
+
+    page = requests.get('http://armory.twinstar.cz/character-sheet.xml?r=Kronos+III&cn={}&gn=Objectively+Perfect'.format(charname))
+    soup = BeautifulSoup(page.content, "html5lib")
+
+    char_dict = {}
+
+    char_dict['level'] = soup.find("character")['level']
+    char_dict['race'] = soup.find("character")['race']
+    char_dict['class'] = soup.find("character")['class'][0]
+    char_dict['lastmodified'] = soup.find("character")['lastmodified']
+    professions = soup.professions.find_all('skill')
+    char_dict['profession1'] = (professions[0]['key'], professions[0]['value'])
+    char_dict['profession2'] = (professions[1]['key'], professions[1]['value'])
+
+    return char_dict
 
 def steamplayers(address="objectivelyperfect.com", port=27015):
     """Returns a string with the list of players for a given server."""
@@ -272,7 +308,7 @@ async def list_alerts(member):
 @client.command(pass_context=True)
 async def wow(ctx, func, char_name='', _class='', *race):
     """ Updates WoW Classic Discord Profiles
-    !wow add Name Class Race
+    !wow add Name
     !wow remove Name
     !wow roster (To see a list of players)
     """
@@ -285,25 +321,25 @@ async def wow(ctx, func, char_name='', _class='', *race):
         if not char_name.isalpha():
             await ctx.message.channel.send('Invalid character name. Format `!wow add Name Class Race`')
             return
-        if _class.lower() not in classes:
-            await ctx.message.channel.send('Invalid class. Format `!wow add Name Class Race`')
-            return
-        if race not in races:
-            await ctx.message.channel.send('Invalid race. Format `!wow add Name Class Race`')
-            return
+        # if _class.lower() not in classes:
+        #     await ctx.message.channel.send('Invalid class. Format `!wow add Name Class Race`')
+        #     return
+        # if race not in races:
+        #     await ctx.message.channel.send('Invalid race. Format `!wow add Name Class Race`')
+        #     return
 
         conn = sqlite3.connect(config['sqlite']['path'])
         cur = conn.cursor()
         cur.execute("""
-                    INSERT OR REPLACE INTO wow_chars (discord_id, char_name, char_class, race)
-                    VALUES ({}, '{}', '{}', '{}');
-                    """.format(ctx.message.author.id, char_name.lower(), _class.lower(), race)
+                    INSERT OR REPLACE INTO wow_chars (discord_id, char_name)
+                    VALUES ({}, '{}');
+                    """.format(ctx.message.author.id, char_name.lower())
                     )
         conn.commit()
         cur.close()
         conn.close()
 
-        await ctx.message.channel.send('Added {} to database: {}, {}'.format(char_name, race, _class).title())
+        await ctx.message.channel.send('Added {} to database.'.format(char_name.title()))
 
     elif func == 'remove':
         if not char_name.isalpha():
@@ -328,17 +364,32 @@ async def wow(ctx, func, char_name='', _class='', *race):
     elif func == 'roster':
         conn = sqlite3.connect(config['sqlite']['path'])
         cur = conn.cursor()
-        cur.execute("SELECT * FROM wow_chars")
+        cur.execute("SELECT discord_id, name, class, wow_char_info.race, wow_char_info.level FROM wow_chars INNER JOIN wow_char_info ON char_name=name;")
         rows = cur.fetchall()
         rows = [list(row) for row in rows]
         for row in rows:
             row[0] = client.get_user(row[0]).display_name
-        
-        rows.sort(key=lambda x: x[2])
+        # rows.sort(key=lambda x: x[2])
         output = tabulate(rows, headers=['User', 'Name', 'Class', 'Race', 'Lvl'])
         conn.close()
         await ctx.message.channel.send('```{}```'.format(output).title())
 
+    elif func == 'fullroster':
+        conn = sqlite3.connect(config['sqlite']['path'])
+        cur = conn.cursor()
+        cur.execute("SELECT discord_id, name, class, wow_char_info.race, wow_char_info.level FROM wow_chars LEFT JOIN wow_char_info ON char_name=name;")
+        rows = cur.fetchall()
+        rows = [list(row) for row in rows]
+        for row in rows:
+            row[0] = client.get_user(row[0]).display_name
+        # rows.sort(key=lambda x: x[2])
+        output = tabulate(rows, headers=['User', 'Name', 'Class', 'Race', 'Lvl'])
+        conn.close()
+        await ctx.message.channel.send('```{}```'.format(output).title())
+
+    elif func == 'update':
+        armory_guild_update(ctx)
+        await ctx.message.channel.send('Guild database updated.')
 
 @client.command(pass_context=True)
 async def add_alert(member, message):
