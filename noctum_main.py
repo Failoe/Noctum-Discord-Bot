@@ -21,6 +21,7 @@ import configparser
 from noctum_utils.db_utils import pgsql_connect
 import sqlite3
 from tabulate import tabulate
+import operator
 
 __version__ = 0.3
 os.system("title " + "Noctum Bot v{}".format(__version__))
@@ -114,9 +115,9 @@ def armory_guild_update(context):
 
     for char in db_char_list:
         if char not in character_list:
-            print("Deleting {}".format(char))
+            print("Deleting {} from database because they are no longer in the guild.".format(char))
             cur.execute("DELETE FROM wow_char_info WHERE name=?", (char,))
-            cur.execute("DELETE FROM wow_chars WHERE name=?", (char,))
+            cur.execute("DELETE FROM wow_chars WHERE char_name=?", (char,))
             conn.commit()
     for character in character_list:
         char_info = armory_char_query(character)
@@ -362,17 +363,27 @@ async def wow(ctx, func, char_name='', _class='', *race):
         conn.close()
 
     elif func == 'roster':
+        roster_message = await ctx.message.channel.send('Updating database...')
+        try:
+            armory_guild_update(ctx)
+        except Exception as e:
+            await ctx.message.channel.send('Something broke while updating the database.\n```{}```'.format(e))
+
         conn = sqlite3.connect(config['sqlite']['path'])
         cur = conn.cursor()
-        cur.execute("SELECT discord_id, name, class, wow_char_info.race, wow_char_info.level FROM wow_chars INNER JOIN wow_char_info ON char_name=name;")
+        cur.execute("SELECT discord_id, name, class, wow_char_info.level FROM wow_char_info LEFT JOIN wow_chars ON name=char_name;")
         rows = cur.fetchall()
         rows = [list(row) for row in rows]
         for row in rows:
-            row[0] = client.get_user(row[0]).display_name
-        # rows.sort(key=lambda x: x[2])
-        output = tabulate(rows, headers=['User', 'Name', 'Class', 'Race', 'Lvl'])
+            if row[0]:
+                row[0] = client.get_user(row[0]).display_name
+
+        rows.sort(key = operator.itemgetter(3), reverse=True)
+        rows.sort(key = operator.itemgetter(2))
+
+        output = tabulate(rows, headers=['Discord ID', 'Name', 'Class', 'Lvl'])
         conn.close()
-        await ctx.message.channel.send('```{}```'.format(output).title())
+        await roster_message.edit(content='```{}```'.format(output).title())
 
     elif func == 'fullroster':
         conn = sqlite3.connect(config['sqlite']['path'])
@@ -382,14 +393,54 @@ async def wow(ctx, func, char_name='', _class='', *race):
         rows = [list(row) for row in rows]
         for row in rows:
             row[0] = client.get_user(row[0]).display_name
-        # rows.sort(key=lambda x: x[2])
+
+        rows.sort(key = operator.itemgetter(3), reverse=True)
+        rows.sort(key = operator.itemgetter(2))
+
         output = tabulate(rows, headers=['User', 'Name', 'Class', 'Race', 'Lvl'])
         conn.close()
         await ctx.message.channel.send('```{}```'.format(output).title())
 
     elif func == 'update':
-        armory_guild_update(ctx)
-        await ctx.message.channel.send('Guild database updated.')
+        try:
+            armory_guild_update(ctx)
+            await ctx.message.channel.send('Guild database updated.')
+        except Exception as e:
+            await ctx.message.channel.send('Something broke.\n```{}```'.format(e))
+
+    elif func == 'professions' or func == 'profs':
+        conn = sqlite3.connect(config['sqlite']['path'])
+        cur = conn.cursor()
+        cur.execute("""
+                SELECT discord_id, name, prof1, prof1_level FROM wow_char_info LEFT JOIN wow_chars ON char_name=name
+                UNION ALL
+                SELECT discord_id, name, prof2, prof2_level FROM wow_char_info LEFT JOIN wow_chars ON char_name=name;"""
+                )
+        rows = cur.fetchall()
+        conn.close()
+
+        rows = [list(row) for row in rows]
+
+        rows.sort(key = operator.itemgetter(3), reverse=True)
+        rows.sort(key = operator.itemgetter(2))
+
+        header = ""
+        row_output = []
+        for row in rows:
+            if row[0]:
+                row[0] = client.get_user(row[0]).display_name
+
+            if row[2] != header:
+                header = row[2]
+                row_output.append([])
+                row_output.append([header.upper()])
+
+            row[1] = row[1].title() #Makes the player name titlecase
+            row.pop(2) #This removes the name of the profession
+            row.pop(0) #This removes the Discord Username
+            row_output.append(row)
+        output = tabulate(row_output)
+        await ctx.message.channel.send('```{}```'.format(output))
 
 @client.command(pass_context=True)
 async def add_alert(member, message):
