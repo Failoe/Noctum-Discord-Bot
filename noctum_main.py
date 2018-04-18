@@ -98,6 +98,8 @@ async def on_ready():
     await asyncio.sleep(3)
 
     # This updates the Conquer the Ark channel with the currently online players
+    # Change this to the follow background process style
+    # https://github.com/Rapptz/discord.py/blob/master/examples/background_task.py
     while not client.is_closed:
         channel = client.get_channel('391298871768121344')
         try:
@@ -112,12 +114,13 @@ async def on_ready():
 async def on_message(message):
     print(datetime.datetime.now().time(), message.channel,
           message.author.name, "|", message.content)
-    if message.author.id != 260964776945909760:  # Excludes Noctum's own messages
-        if message.content.startswith('Noctum help') or message.content == ("help"):
-            await message.channel.send("Hah, no.")
+    if message.author == client.user: # Excludes Noctum's own messages
+        return
+    if message.content.startswith('Noctum help') or message.content == ("help"):
+        await message.channel.send("Hah, no.")
 
-        if 'thunderfury' in message.content.lower():
-            await message.channel.send("Did someone say [Thunderfury, Blessed Blade of the Windseeker]?")
+    if 'thunderfury' in message.content.lower():
+        await message.channel.send("Did someone say [Thunderfury, Blessed Blade of the Windseeker]?")
 
     await client.process_commands(message)
 

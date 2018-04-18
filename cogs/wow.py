@@ -15,7 +15,11 @@ class WoWCog:
 		self.bot = bot
 
 	def armory_guild_update(self, context):
-		page = requests.get('http://armory.twinstar.cz/guild-info.xml?r=Kronos+III&gn=Objectively+Perfect')
+		try:
+			page = requests.get('http://armory.twinstar.cz/guild-info.xml?r=Kronos+III&gn=Objectively+Perfect', timeout=5)
+		except:
+			context.send("Unable to query Kronos Database.")
+			return
 		soup = BeautifulSoup(page.content, "html5lib")
 
 		characters = soup.find_all('character')

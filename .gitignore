@@ -1,3 +1,5 @@
 private.txt
 noctum.config
 noctumDB.db
+noctum_utils/__pycache__/
+cogs/__pycache__/
