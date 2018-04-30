@@ -1,3 +1,4 @@
+import discord
 from discord.ext import commands
 import os
 
@@ -59,6 +60,26 @@ class OwnerCog:
             await ctx.send(f'**`ERROR:`** {type(e).__name__} - {e}')
         else:
             await ctx.send('**`SUCCESS`**')
+
+
+    @commands.command(name='change_activity', hidden=True, aliases=['ca'])
+    @commands.is_owner()
+    async def change_activity(self, ctx, *, activity: str):
+        """Changes the bot's current activity"""
+        try:
+            game = discord.Game(activity)
+            await ctx.bot.change_presence(status=discord.Status.idle, activity=game)
+        except Exception as e:
+            await ctx.send(f'**`ERROR:`** {type(e).__name__} - {e}')
+        else:
+            await ctx.send(f'**`SUCCESS`**: Changed activity to `{activity}`')
+
+
+    async def on_message(self, ctx):
+        if ctx.author == self.bot.user: # Excludes Noctum's own messages
+            return
+        if ctx.content.lower().startswith('reee'):
+            await ctx.channel.send("REEEEEEEEE!!!!!")
 
 
 def setup(bot):

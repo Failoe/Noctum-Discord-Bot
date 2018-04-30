@@ -32,8 +32,6 @@ description = "Noctum bot for OP Ark's Discord"
 config = configparser.ConfigParser()
 config.read('noctum.config')
 
-announced_dinos = []
-
 
 def steamplayers(address="objectivelyperfect.com", port=27015):
     """Returns a string with the list of players for a given server."""
@@ -89,9 +87,6 @@ if __name__ == '__main__':
 async def on_ready():
     print(f'Logged in as: {client.user.name}. ID: {client.user.id}\nVersion: {discord.__version__}')
     print('------')
-    # Sets the Noctum's status to playing the following game
-    # game = discord.Game(name='with data')
-    # await client.change_presence(status=discord.Status.online, game=game)
 
     # This code updates the CTA header to show the player counts
     await client.wait_until_ready()
@@ -111,31 +106,16 @@ async def on_ready():
 
 
 @client.event
-async def on_message(message):
-    print(datetime.datetime.now().time(), message.channel,
-          message.author.name, "|", message.content)
-    if message.author == client.user: # Excludes Noctum's own messages
-        return
-    if message.content.startswith('Noctum help') or message.content == ("help"):
-        await message.channel.send("Hah, no.")
-
-    if 'thunderfury' in message.content.lower():
-        await message.channel.send("Did someone say [Thunderfury, Blessed Blade of the Windseeker]?")
-
-    await client.process_commands(message)
-
-
-@client.event
 async def on_member_join(member):
     server = member.server
     fmt = 'Welcome {0.mention} to {1}!'
-    await server.send(fmt.format(member, "OP Ark"))
+    await server.send(fmt.format(member, "OP"))
 
 
 @client.command(pass_context=True, hidden=True)
 async def run_sql(ctx, arg1, *arg2):
     """Runs arbitrary sql"""
-    if ctx.message.author.id == 119717143670423554:
+    if ctx.guild.owner == ctx.author:
         if arg1 == "pgsql":
             pass
         elif arg1 == "sqlite":

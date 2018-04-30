@@ -4,5 +4,5 @@
 
 # TO DO LIST
 
-* Move commands for different games into separate groups
-* Add WoW class commands
+* Integrate Tracker as a Cog
+* Set up background tasks
